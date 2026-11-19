@@ -1,0 +1,76 @@
+# Genome-wide ENCODE GRCh38 enhancer-gene-CTCF integration config
+# Comparison: K562 (myeloid leukemia, MYC-active) vs GM12878 (lymphoblastoid B-cell)
+
+_config_path: "config/config.yaml"
+
+comparison:
+  condition_a: "K562"
+  condition_b: "GM12878"
+
+genome:
+  assembly: "GRCh38"
+  gencode_gtf_url: "https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_29/gencode.v29.basic.annotation.gtf.gz"
+
+# Empty list = all canonical chromosomes (chr1-chr22, chrX)
+chromosomes:
+  - "chr1"
+  - "chr2"
+  - "chr3"
+  - "chr4"
+  - "chr5"
+  - "chr6"
+  - "chr7"
+  - "chr8"
+  - "chr9"
+  - "chr10"
+  - "chr11"
+  - "chr12"
+  - "chr13"
+  - "chr14"
+  - "chr15"
+  - "chr16"
+  - "chr17"
+  - "chr18"
+  - "chr19"
+  - "chr20"
+  - "chr21"
+  - "chr22"
+  - "chrX"
+
+encode:
+  K562:
+    atac_experiment: "ENCSR483RKN"   # K562 ATAC-seq (GRCh38 narrowPeak)
+    ctcf_experiment: "ENCSR000DWE"   # K562 CTCF ChIP-seq (GRCh38 narrowPeak)
+    rna_experiment: "ENCSR000AEM"    # K562 polyA plus RNA-seq (GRCh38 gene quantifications)
+  GM12878:
+    atac_experiment: "ENCSR095QNB"   # GM12878 ATAC-seq (GRCh38 narrowPeak)
+    ctcf_experiment: "ENCSR000DZN"   # GM12878 CTCF ChIP-seq (GRCh38 narrowPeak)
+    rna_experiment: "ENCSR000AED"    # GM12878 polyA plus RNA-seq (GRCh38 gene quantifications)
+
+annotation:
+  biotypes:
+    - "protein_coding"
+    - "lincRNA"
+    - "antisense"
+
+parameters:
+  promoter_window_bp: 2000           # +/- 2 kb around TSS defined as promoter
+  enhancer_max_distance_bp: 250000   # Link distal ATAC peaks up to 250 kb from TSS
+  ctcf_proximity_bp: 1000            # Max distance from ATAC peak to call CTCF-bound/adjacent
+  min_tpm: 1.0                       # Minimum TPM in at least one condition
+  deg_log2fc_threshold: 1.0          # |log2FC| threshold for condition-biased expression
+  atac_log2fc_threshold: 1.0         # |log2FC| threshold for condition-specific accessibility
+  random_seed: 42
+
+plotting:
+  highlight_genes:
+    - "MYC"
+    - "PVT1"
+    - "GATA1"
+    - "CD79A"
+    - "PAX5"
+
+output_dirs:
+  data: "data/raw"
+  results: "results"
+  figures: "figures"

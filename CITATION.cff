@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use this workflow or code in your research, please cite it as below."
+type: software
+title: "enhancer-gene-atac-rna-ctcf: Reproducible Snakemake workflow for ATAC-seq, RNA-seq, and CTCF enhancer-gene integration"
+version: 0.1.0
+date-released: 2026-11-19
+license: MIT
+url: "https://arjunbioinfo.github.io/"
+# Add repository-code and doi fields once pushed to GitHub and archived on Zenodo.
+authors:
+  - family-names: "Thippana"
+    given-names: "Mallikarjuna"
+    affiliation: "Department of Oncology-Pathology, Karolinska Institutet"
+keywords:
+  - bioinformatics
+  - epigenomics
+  - ATAC-seq
+  - RNA-seq
+  - CTCF
+  - enhancer-gene regulation
+  - Snakemake
+  - reproducible research
+abstract: >-
+  A config-driven Snakemake and Python pipeline that integrates ATAC-seq chromatin
+  accessibility, RNA-seq gene expression, and CTCF ChIP-seq occupancy to link distal
+  enhancers to target genes, test CTCF regulatory enrichment, and prioritize
+  candidate regulatory loci using public ENCODE GRCh38 datasets.

@@ -1,53 +1,53 @@
-# Fast CI configuration: real public ENCODE GRCh38 data (K562 vs GM12878)
-# Restricted to chr8 (includes the MYC / CCAT1 / PVT1 8q24.21 regulatory locus)
+name: CI — Enhancer-Gene ATAC/RNA/CTCF Pipeline
 
-_config_path: "config/ci.yaml"
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
 
-comparison:
-  condition_a: "K562"
-  condition_b: "GM12878"
+jobs:
+  test-and-run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-genome:
-  assembly: "GRCh38"
-  gencode_gtf_url: "https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_29/gencode.v29.basic.annotation.gtf.gz"
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
 
-chromosomes:
-  - "chr8"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-encode:
-  K562:
-    atac_experiment: "ENCSR483RKN"
-    ctcf_experiment: "ENCSR000DWE"
-    rna_experiment: "ENCSR000AEM"
-  GM12878:
-    atac_experiment: "ENCSR095QNB"
-    ctcf_experiment: "ENCSR000DZN"
-    rna_experiment: "ENCSR000AED"
+      - name: Run unit tests
+        run: pytest -v tests/
 
-annotation:
-  biotypes:
-    - "protein_coding"
-    - "lincRNA"
-    - "antisense"
+      - name: Run Snakemake pipeline on real ENCODE chr8 data (K562 vs GM12878)
+        run: |
+          snakemake --cores 2 --configfile config/ci.yaml --config _config_path=config/ci.yaml
 
-parameters:
-  promoter_window_bp: 2000
-  enhancer_max_distance_bp: 250000
-  ctcf_proximity_bp: 1000
-  min_tpm: 1.0
-  deg_log2fc_threshold: 1.0
-  atac_log2fc_threshold: 1.0
-  random_seed: 42
+      - name: Verify expected outputs
+        run: |
+          test -s results/enhancer_gene_links.tsv
+          test -s results/gene_regulatory_summary.tsv
+          test -s results/ctcf_enrichment_stats.tsv
+          test -s results/prioritized_candidates.tsv
+          test -s figures/atac_rna_correlation.png
+          test -s figures/ctcf_enrichment.png
+          test -s figures/distance_to_ctcf.png
+          test -s figures/top_candidates_summary.png
 
-plotting:
-  highlight_genes:
-    - "MYC"
-    - "PVT1"
-    - "CCAT1"
-    - "BLK"
-    - "TRIB1"
-
-output_dirs:
-  data: "data/raw"
-  results: "results"
-  figures: "figures"
+      - name: Upload CI figures and summary tables
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-chr8-outputs
+          path: |
+            results/ctcf_enrichment_stats.tsv
+            results/prioritized_candidates.tsv
+            figures/*.png

@@ -1,4 +1,6 @@
 # enhancer-gene-atac-rna-ctcf
+[[https://github.com/arjunbioinfo/enhancer-gene-atac-rna-ctcf/actions/workflows/ci.yml/badge.svg]](https://github.com/arjunbioinfo/enhancer-gene-atac-rna-ctcf/actions/workflows/ci.yml)
+[[https://img.shields.io/badge/License-MIT-blue.svg]](LICENSE)
 
 A reproducible, config-driven **Snakemake + Python** workflow for integrating **ATAC-seq** chromatin accessibility, **RNA-seq** gene expression, and **CTCF ChIP-seq** occupancy to link distal enhancers to target genes, test CTCF regulatory enrichment, and prioritize candidate loci.
 
@@ -20,6 +22,16 @@ Every push runs unit tests and executes the full Snakemake workflow on real publ
 | **GM12878** (lymphoblastoid) | [ENCSR095QNB](https://www.encodeproject.org/experiments/ENCSR095QNB/) | [ENCSR000DZN](https://www.encodeproject.org/experiments/ENCSR000DZN/) | [ENCSR000AED](https://www.encodeproject.org/experiments/ENCSR000AED/) |
 
 Gene TSS annotations are parsed from GENCODE release 29 basic annotation (GRCh38) to match ENCODE V29 gene quantifications.
+
+## Example Outputs (ENCODE GRCh38 `chr8`: K562 vs. GM12878)
+
+| Distal Enhancer Accessibility vs. Expression | CTCF Binding Enrichment |
+| :---: | :---: |
+| [figures/atac_rna_correlation.png] | [figures/ctcf_enrichment.png] |
+
+| Distance from Distal Enhancers to CTCF | Top Prioritized Candidates |
+| :---: | :---: |
+| [figures/distance_to_ctcf.png] | [figures/top_candidates_summary.png] |
 
 ## Quick Start
 

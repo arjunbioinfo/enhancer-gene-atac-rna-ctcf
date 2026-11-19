@@ -45,10 +45,10 @@ def test_parse_gencode_tss(tmp_path: Path) -> None:
 
 
 def test_score_ctcf_pwm_distinguishes_consensus() -> None:
-    # Strong canonical CTCF core motif (CCACCAGGGGGCG) embedded in 19-bp sequence
-    canonical = "TGGCCACCAGGGGGCGCTA"
+    # Exact 19-bp JASPAR MA0139.1 CTCF consensus sequence
+    canonical = "TGGCCACCAGGGCCGCGGA"
     poly_a = "AAAAAAAAAAAAAAAAAAA"
-    assert score_ctcf_pwm(canonical) > 10.0
+    assert score_ctcf_pwm(canonical) > 15.0
     assert score_ctcf_pwm(canonical) > score_ctcf_pwm(poly_a) + 15.0
 
 

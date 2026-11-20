@@ -2,15 +2,16 @@ cff-version: 1.2.0
 message: "If you use this workflow or code in your research, please cite it as below."
 type: software
 title: "enhancer-gene-atac-rna-ctcf: Reproducible Snakemake workflow for ATAC-seq, RNA-seq, and CTCF enhancer-gene integration"
-version: 0.1.0
-date-released: 2026-11-19
+version: 0.2.0
+date-released: 2026-11-20
 license: MIT
 url: "https://arjunbioinfo.github.io/"
-# Add repository-code and doi fields once pushed to GitHub and archived on Zenodo.
+repository-code: "https://github.com/arjunbioinfo/enhancer-gene-atac-rna-ctcf"
 authors:
   - family-names: "Thippana"
     given-names: "Mallikarjuna"
     affiliation: "Department of Oncology-Pathology, Karolinska Institutet"
+    orcid: "https://orcid.org/0000-0001-8485-8626"
 keywords:
   - bioinformatics
   - epigenomics

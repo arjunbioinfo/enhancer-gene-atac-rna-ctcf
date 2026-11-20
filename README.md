@@ -1,94 +1,102 @@
 # enhancer-gene-atac-rna-ctcf
-[[https://github.com/arjunbioinfo/enhancer-gene-atac-rna-ctcf/actions/workflows/ci.yml/badge.svg]](https://github.com/arjunbioinfo/enhancer-gene-atac-rna-ctcf/actions/workflows/ci.yml)
-[[https://img.shields.io/badge/License-MIT-blue.svg]](LICENSE)
 
-A reproducible, config-driven **Snakemake + Python** workflow for integrating **ATAC-seq** chromatin accessibility, **RNA-seq** gene expression, and **CTCF ChIP-seq** occupancy to link distal enhancers to target genes, test CTCF regulatory enrichment, and prioritize candidate loci.
+[![CI](https://github.com/arjunbioinfo/enhancer-gene-atac-rna-ctcf/actions/workflows/ci.yml/badge.svg)](https://github.com/arjunbioinfo/enhancer-gene-atac-rna-ctcf/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Every push runs unit tests and executes the full Snakemake workflow on real public **ENCODE GRCh38** data (**K562** vs **GM12878** on `chr8`, including the **8q24.21 MYC / PVT1** regulatory locus) in GitHub Actions CI.
+A reproducible, config-driven **Snakemake + Python** workflow that integrates **ATAC-seq** chromatin accessibility, **RNA-seq** gene expression and **CTCF ChIP-seq** occupancy to link distal enhancers to candidate target genes, test whether condition-biased enhancers are CTCF-bound, and rank candidate regulatory loci.
 
-## Pipeline Overview
+Every push runs the unit tests and the full Snakemake workflow on real public **ENCODE GRCh38** data (**K562** vs **GM12878**, `chr8`, which includes the **8q24.21 MYC / PVT1** locus) in GitHub Actions.
 
-1. **Download (`download_encode.py`)**: Queries the ENCODE REST API for released GRCh38 ATAC-seq narrowPeak, CTCF ChIP-seq narrowPeak, and polyA+ RNA-seq gene quantification files, downloads GENCODE v29 basic GTF, and records exact `ENCFF` accessions in `data/raw/download_manifest.json`.
-2. **TSS Annotation (`parse_gencode_tss.py`)**: Extracts strand-aware gene transcription start sites (protein-coding, lincRNA, antisense) from GENCODE v29.
-3. **ATAC + RNA Integration (`integrate_atac_rna.py`)**: Merges condition-specific ATAC peaks into a unified consensus set, computes differential accessibility, classifies promoters vs. distal enhancers (up to 250 kb), links peaks to target genes with exponential distance decay, and classifies per-gene concordance (`concordant_K562`, `concordant_GM12878`, `chromatin_primed`, `discordant`, `baseline`).
-4. **CTCF Enrichment & Prioritization (`ctcf_enrichment.py`)**: Measures exact distance to nearest CTCF ChIP-seq peak, runs two-sided Fisher's exact tests (with 95% CI and Benjamini-Hochberg FDR) and Mann-Whitney distance tests, provides a JASPAR `MA0139.1` CTCF log-odds PWM scorer, and ranks multi-omic candidate genes.
-5. **Visualization (`plot_summary.py`)**: Produces four 300 DPI summary figures in `figures/`.
+## Pipeline overview
 
-## Public Benchmark Data (ENCODE GRCh38)
+1. **Download** (`download_encode.py`): queries the ENCODE REST API for released GRCh38 ATAC-seq and CTCF ChIP-seq narrowPeak files and polyA+ RNA-seq gene quantifications, downloads the GENCODE v29 basic GTF, and records the exact `ENCFF` file accessions in `data/raw/download_manifest.json`.
+2. **TSS annotation** (`parse_gencode_tss.py`): strand-aware transcription start sites for protein-coding, lincRNA and antisense genes.
+3. **ATAC + RNA integration** (`integrate_atac_rna.py`): merges the two conditions' ATAC peaks into consensus regions (each keeps the summit of its strongest peak), flags condition-biased accessibility, separates promoters (±2 kb) from distal elements (up to 250 kb), links elements to genes with an exponential distance weight, and classifies each gene (`concordant_K562`, `concordant_GM12878`, `chromatin_primed`, `discordant`, `baseline`).
+4. **CTCF enrichment and ranking** (`ctcf_enrichment.py`): distance from each element's summit to the nearest CTCF summit, peak-level Fisher's exact tests (95% CI) and Mann–Whitney distance tests, all corrected together with Benjamini–Hochberg; ranks concordant genes by expression change, enhancer support and CTCF occupancy. Also provides a JASPAR `MA0139.1` CTCF motif scorer.
+5. **Figures** (`plot_summary.py`): four 300-dpi summary figures in `figures/`.
 
-| Cell Line | ATAC-seq | CTCF ChIP-seq | RNA-seq (polyA+) |
+## Public benchmark data (ENCODE GRCh38)
+
+| Cell line | ATAC-seq | CTCF ChIP-seq | RNA-seq (polyA+) |
 | :--- | :--- | :--- | :--- |
-| **K562** (myeloid leukemia) | [ENCSR483RKN](https://www.encodeproject.org/experiments/ENCSR483RKN/) | [ENCSR000DWE](https://www.encodeproject.org/experiments/ENCSR000DWE/) | [ENCSR000AEM](https://www.encodeproject.org/experiments/ENCSR000AEM/) |
+| **K562** (chronic myeloid leukaemia) | [ENCSR483RKN](https://www.encodeproject.org/experiments/ENCSR483RKN/) | [ENCSR000DWE](https://www.encodeproject.org/experiments/ENCSR000DWE/) | [ENCSR000AEM](https://www.encodeproject.org/experiments/ENCSR000AEM/) |
 | **GM12878** (lymphoblastoid) | [ENCSR095QNB](https://www.encodeproject.org/experiments/ENCSR095QNB/) | [ENCSR000DZN](https://www.encodeproject.org/experiments/ENCSR000DZN/) | [ENCSR000AED](https://www.encodeproject.org/experiments/ENCSR000AED/) |
 
-Gene TSS annotations are parsed from GENCODE release 29 basic annotation (GRCh38) to match ENCODE V29 gene quantifications.
+Gene TSSs come from the GENCODE release 29 basic annotation (GRCh38), matching the ENCODE V29 gene quantifications.
 
-## Example Outputs (ENCODE GRCh38 `chr8`: K562 vs. GM12878)
+## Example outputs (ENCODE GRCh38 `chr8`, K562 vs GM12878)
 
-| Distal Enhancer Accessibility vs. Expression | CTCF Binding Enrichment |
+| Distal enhancer accessibility vs expression | CTCF occupancy at condition-biased enhancers |
 | :---: | :---: |
-| [figures/atac_rna_correlation.png] | [figures/ctcf_enrichment.png] |
+| ![Distal enhancer accessibility vs expression](figures/atac_rna_correlation.png) | ![CTCF occupancy odds ratios](figures/ctcf_enrichment.png) |
+| **Distance from distal enhancers to CTCF** | **Top ranked concordant candidates** |
+| ![Distance from distal enhancers to CTCF](figures/distance_to_ctcf.png) | ![Top ranked candidates](figures/top_candidates_summary.png) |
 
-| Distance from Distal Enhancers to CTCF | Top Prioritized Candidates |
-| :---: | :---: |
-| [figures/distance_to_ctcf.png] | [figures/top_candidates_summary.png] |
-
-## Quick Start
+## Quick start
 
 ```bash
-# 1. Create environment (Conda)
+# 1. Create the environment (conda)
 conda env create -f environment.yml
 conda activate enhancer-atac-rna-ctcf
 
-# ...or pip:
+# ...or pip
 pip install -r requirements.txt
 
-# 2. Run unit tests (offline)
+# 2. Unit tests (offline)
 make test
 
 # 3. Fast end-to-end run on real ENCODE chr8 data (K562 vs GM12878)
 make ci
 
-# 4. Full genome-wide run (chr1-chr22, chrX)
+# 4. Genome-wide run (chr1-chr22, chrX)
 make run
 
-# Or run via Docker (mounts local results/ and figures/)
+# Or with Docker (results/ and figures/ are written to the host)
 docker build -t enhancer-atac-rna-ctcf .
 docker run --rm -v "$(pwd)/results:/app/results" -v "$(pwd)/figures:/app/figures" enhancer-atac-rna-ctcf
 ```
 
 ## Outputs
 
-* `results/enhancer_gene_links.tsv` — Consensus ATAC peaks linked to GENCODE TSSs (promoter vs. distal enhancer) with distance-decayed regulatory weights and RNA-seq log2FC.
-* `results/gene_regulatory_summary.tsv` — Per-gene regulatory classification (`concordant_K562`, `concordant_GM12878`, `chromatin_primed`, `discordant`, `baseline`).
-* `results/ctcf_enrichment_stats.tsv` — Two-sided Fisher's exact tests (odds ratios, 95% CI, BH-FDR) and Mann-Whitney distance tests for CTCF enrichment at condition-specific enhancers and DEG-linked enhancers.
-* `results/prioritized_candidates.tsv` — Ranked multi-omic candidate genes combining concordant expression change, distal enhancer accessibility, and proximal CTCF occupancy.
-* `figures/` — Publication-ready 300 DPI PNGs: `atac_rna_correlation.png`, `ctcf_enrichment.png`, `distance_to_ctcf.png`, and `top_candidates_summary.png`.
+* `results/enhancer_gene_links.tsv`: consensus ATAC elements linked to GENCODE TSSs (promoter or distal), with distance weights and RNA-seq log2 ratios.
+* `results/gene_regulatory_summary.tsv`: per-gene classification (`concordant_K562`, `concordant_GM12878`, `chromatin_primed`, `discordant`, `baseline`).
+* `results/ctcf_enrichment_stats.tsv`: one row per test. `test` is `fisher` (odds ratio, 95% CI) or `mann_whitney` (median distances); `fdr_bh` is the Benjamini–Hochberg adjustment across all rows.
+* `results/prioritized_candidates.tsv`: concordant genes only (expression and distal accessibility biased in the same direction), ranked by `priority_score`.
+* `figures/`: `atac_rna_correlation.png`, `ctcf_enrichment.png`, `distance_to_ctcf.png`, `top_candidates_summary.png`.
 
-## Using Your Own Data
+## Methods notes and limitations
 
-1. Replace the `encode` experiment accessions in `config/config.yaml` with any pair of released ENCODE GRCh38 experiments, or place local files directly in `data/raw/` named `<COND>_atac.narrowPeak.gz`, `<COND>_ctcf.narrowPeak.gz`, and `<COND>_rna_quant.tsv` (columns: `gene_id`, `TPM`).
-2. Adjust genomic windows and thresholds in `config/config.yaml` (`promoter_window_bp`, `enhancer_max_distance_bp`, `ctcf_proximity_bp`, `min_tpm`, `deg_log2fc_threshold`, `atac_log2fc_threshold`).
-3. For sequence-level CTCF motif scoring against a custom FASTA, import `score_ctcf_pwm` (JASPAR `MA0139.1` log-odds PWM) from `workflow/scripts/ctcf_enrichment.py`.
+* **Condition bias, not differential testing.** Accessibility (peak-caller signal value) and expression (TPM) are compared as log2 ratios between one ENCODE experiment per condition, with |log2 ratio| ≥ 1 as the cut-off. These are descriptive screens; they do not model replicate variance. The `deg_status` column therefore means "expression-biased by fold change", not a tested differentially expressed gene. For formal tests, use replicate-level counts with DESeq2/edgeR (RNA) or DiffBind/csaw (ATAC).
+* **Peak-level counting.** A distal peak is linked to every TSS within 250 kb, so the same peak can appear in many links. All enrichment tests count each peak once: "near up genes" means a peak linked to at least one gene up in that condition; the background is peaks linked to no expression-biased gene.
+* **Summits.** Distances use narrowPeak summits (`start + column 10`), falling back to the interval midpoint when no summit is reported. A merged consensus region uses the summit of its strongest contributing peak.
+* **Linking by distance.** Enhancer–gene links are distance-based candidates, not measured contacts. Chromatin-conformation data (Hi-C, Micro-C, 4C) or perturbation evidence is needed to confirm a link.
+* **Cell lines.** K562 and GM12878 differ in lineage as well as disease state, so condition bias reflects both.
 
-## Repository Layout
+## Using your own data
 
-* `Snakefile` — End-to-end Snakemake workflow
-* `Makefile` — `setup`, `test`, `ci`, `run`, and `clean` shortcuts
-* `config/config.yaml` — Genome-wide K562 vs GM12878 config
-* `config/ci.yaml` — Fast `chr8` (MYC locus) CI config
-* `workflow/scripts/` — Modular Python scripts (`download_encode.py`, `parse_gencode_tss.py`, `integrate_atac_rna.py`, `ctcf_enrichment.py`, `plot_summary.py`)
-* `notebooks/walkthrough.ipynb` — Interactive exploration notebook
-* `tests/test_pipeline.py` — Unit and synthetic end-to-end smoke tests
-* `environment.yml` / `requirements.txt` — Pinned Conda and pip environments
-* `Dockerfile` / `.dockerignore` — Container image definition for Docker and Apptainer
-* `CITATION.cff` — Software citation metadata for GitHub and Zenodo archiving
-* `.github/workflows/ci.yml` — GitHub Actions CI (pytest + `chr8` ENCODE run)
+1. Replace the `encode` experiment accessions in `config/config.yaml` with any pair of released ENCODE GRCh38 experiments, or place local files in `data/raw/` named `<COND>_atac.narrowPeak.gz`, `<COND>_ctcf.narrowPeak.gz` and `<COND>_rna_quant.tsv` (columns: `gene_id`, `TPM`).
+2. Adjust windows and thresholds in `config/config.yaml` (`promoter_window_bp`, `enhancer_max_distance_bp`, `ctcf_proximity_bp`, `min_tpm`, `deg_log2fc_threshold`, `atac_log2fc_threshold`).
+3. For sequence-level CTCF motif scoring on your own sequences, import `score_ctcf_pwm` (JASPAR `MA0139.1` log-odds PWM) from `workflow/scripts/ctcf_enrichment.py`.
+
+## Repository layout
+
+* `Snakefile`: end-to-end workflow
+* `Makefile`: `setup`, `test`, `ci`, `run` and `clean` shortcuts
+* `config/config.yaml`: genome-wide K562 vs GM12878 configuration
+* `config/ci.yaml`: fast `chr8` (MYC locus) configuration used in CI
+* `workflow/scripts/`: the five Python steps
+* `notebooks/walkthrough.ipynb`: interactive walkthrough of the outputs
+* `tests/test_pipeline.py`: unit tests and a synthetic end-to-end test
+* `environment.yml` / `requirements.txt`: pinned conda and pip environments
+* `Dockerfile` / `.dockerignore`: container image for Docker and Apptainer
+* `CITATION.cff`: citation metadata
+* `.github/workflows/ci.yml`: GitHub Actions (pytest and the `chr8` ENCODE run)
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
 
 ## Author
 
-Mallikarjuna Thippana, PhD — Computational Biologist ([arjunbioinfo.github.io](https://arjunbioinfo.github.io/)).
+**Mallikarjuna Thippana, PhD** — Computational Biologist, Karolinska Institutet  
+[Portfolio](https://arjunbioinfo.github.io/) · [ORCID](https://orcid.org/0000-0001-8485-8626) · [Google Scholar](https://scholar.google.com/citations?user=NpLUj68AAAAJ) · [GitHub](https://github.com/arjunbioinfo)

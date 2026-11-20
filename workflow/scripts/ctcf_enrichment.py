@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Annotate enhancer-gene links with CTCF ChIP-seq occupancy, test enrichment, and prioritize candidates."""
+"""Annotate enhancer-gene links with CTCF ChIP-seq occupancy, test enrichment, and prioritize candidates.
+
+All enrichment tests are peak-level (each distal ATAC peak counted once) and all p-values,
+Fisher and Mann-Whitney, are corrected together with Benjamini-Hochberg."""
 
 from __future__ import annotations
 
@@ -51,18 +54,24 @@ def score_ctcf_pwm(sequence: str) -> float:
 
 
 def load_ctcf_summits(path: Path, chromosomes: set[str] | None = None) -> dict[str, np.ndarray]:
-    """Load CTCF narrowPeak file and return sorted summit coordinates per chromosome."""
+    """Load a CTCF narrowPeak file and return sorted summit coordinates per chromosome.
+
+    The summit is start + the narrowPeak point-source offset (column 10); peaks without an
+    offset (-1) fall back to the interval midpoint.
+    """
     df = pd.read_csv(
         path,
         sep="\t",
         header=None,
-        usecols=[0, 1, 2],
-        names=["chrom", "start", "end"],
+        usecols=[0, 1, 2, 9],
+        names=["chrom", "start", "end", "peak"],
         compression="infer",
     )
     if chromosomes:
         df = df[df["chrom"].isin(chromosomes)].copy()
-    df["summit"] = ((df["start"].astype(int) + df["end"].astype(int)) // 2).astype(int)
+    start = df["start"].astype(int)
+    offset = pd.to_numeric(df["peak"], errors="coerce").fillna(-1).astype(int)
+    df["summit"] = np.where(offset >= 0, start + offset, (start + df["end"].astype(int)) // 2).astype(int)
     return {
         chrom: np.sort(grp["summit"].to_numpy())
         for chrom, grp in df.groupby("chrom")
@@ -150,51 +159,73 @@ def annotate_and_test_ctcf(
     tests: list[dict[str, object]] = []
     shared_bg = distal_peaks[distal_peaks["atac_class"] == "shared"]
 
-    for label, subset, ctcf_col in [
-        (f"{cond_a}_specific_enhancers_vs_shared", distal_peaks[distal_peaks["atac_class"] == f"{cond_a}_specific"], f"ctcf_bound_{cond_a}"),
-        (f"{cond_b}_specific_enhancers_vs_shared", distal_peaks[distal_peaks["atac_class"] == f"{cond_b}_specific"], f"ctcf_bound_{cond_b}"),
-    ]:
+    # (1) Peak-level Fisher tests: condition-biased vs shared distal peaks
+    for cond in (cond_a, cond_b):
+        ctcf_col = f"ctcf_bound_{cond}"
+        subset = distal_peaks[distal_peaks["atac_class"] == f"{cond}_specific"]
         res = run_fisher_test(
-            int(subset[ctcf_col].sum()),
-            len(subset),
-            int(shared_bg[ctcf_col].sum()),
-            len(shared_bg),
+            int(subset[ctcf_col].sum()), len(subset), int(shared_bg[ctcf_col].sum()), len(shared_bg)
         )
-        res["comparison"] = label
+        res["test"] = "fisher"
+        res["comparison"] = f"{cond}_biased_enhancers_vs_shared"
         tests.append(res)
 
-    # Link-level enrichment: distal enhancers linked to DEGs vs unchanged genes
+    # (2) Peak-level Fisher tests near condition-biased genes. One distal peak links to every gene
+    # within the window, so each peak is counted once: foreground = peaks linked to at least one
+    # gene up in the condition; background = peaks linked to no expression-biased gene at all.
     distal_links = out_links[out_links["element_type"] == "distal_enhancer"]
-    bg_deg = distal_links[distal_links["deg_status"] == "unchanged"]
-    for label, deg_val, ctcf_col in [
-        (f"enhancers_of_{cond_a}_up_DEGs_vs_unchanged", f"{cond_a}_up", f"ctcf_bound_{cond_a}"),
-        (f"enhancers_of_{cond_b}_up_DEGs_vs_unchanged", f"{cond_b}_up", f"ctcf_bound_{cond_b}"),
-    ]:
-        fg = distal_links[distal_links["deg_status"] == deg_val]
-        res = run_fisher_test(
-            int(fg[ctcf_col].sum()),
-            len(fg),
-            int(bg_deg[ctcf_col].sum()),
-            len(bg_deg),
+    peak_has = (
+        distal_links.assign(
+            up_a=distal_links["deg_status"] == f"{cond_a}_up",
+            up_b=distal_links["deg_status"] == f"{cond_b}_up",
         )
-        res["comparison"] = label
+        .groupby("peak_id")[["up_a", "up_b"]]
+        .any()
+    )
+    peak_level = distal_peaks.set_index("peak_id").join(peak_has, how="left").fillna({"up_a": False, "up_b": False})
+    unbiased = peak_level[~peak_level["up_a"] & ~peak_level["up_b"]]
+    for cond, flag in ((cond_a, "up_a"), (cond_b, "up_b")):
+        ctcf_col = f"ctcf_bound_{cond}"
+        fg = peak_level[peak_level[flag]]
+        res = run_fisher_test(
+            int(fg[ctcf_col].sum()), len(fg), int(unbiased[ctcf_col].sum()), len(unbiased)
+        )
+        res["test"] = "fisher"
+        res["comparison"] = f"enhancers_near_{cond}_up_genes_vs_unbiased"
         tests.append(res)
+
+    # (3) Mann-Whitney U tests on distance to the nearest CTCF summit, one per condition, each
+    # using that condition's CTCF peaks (same pairing as the Fisher tests in block 1).
+    for cond in (cond_a, cond_b):
+        dist_col = f"dist_ctcf_{cond}_bp"
+        spec_d = distal_peaks[distal_peaks["atac_class"] == f"{cond}_specific"][dist_col].dropna()
+        shar_d = shared_bg[dist_col].dropna()
+        row: dict[str, object] = {
+            "test": "mann_whitney",
+            "comparison": f"{cond}_biased_vs_shared_distance_to_{cond}_CTCF",
+            "fg_total": len(spec_d),
+            "bg_total": len(shar_d),
+            "median_dist_fg_bp": float(np.median(spec_d)) if len(spec_d) else np.nan,
+            "median_dist_bg_bp": float(np.median(shar_d)) if len(shar_d) else np.nan,
+            "pvalue": np.nan,
+        }
+        if len(spec_d) > 0 and len(shar_d) > 0:
+            _, mw_p = mannwhitneyu(spec_d, shar_d, alternative="two-sided")
+            row["pvalue"] = float(mw_p)
+        tests.append(row)
 
     stats_df = pd.DataFrame(tests)
+    lead = ["test", "comparison"]
+    stats_df = stats_df[lead + [c for c in stats_df.columns if c not in lead]]
     if not stats_df.empty:
-        _, fdr, _, _ = multipletests(stats_df["pvalue"].to_numpy(), method="fdr_bh")
-        stats_df["fdr_bh"] = fdr
+        stats_df["fdr_bh"] = np.nan
+        ok = stats_df["pvalue"].notna()
+        if ok.any():
+            _, fdr, _, _ = multipletests(stats_df.loc[ok, "pvalue"].to_numpy(), method="fdr_bh")
+            stats_df.loc[ok, "fdr_bh"] = fdr
 
-        # Add Mann-Whitney U test for CTCF distance shift on condition-specific vs shared enhancers
-        spec_d = distal_peaks[distal_peaks["atac_class"] != "shared"]["dist_ctcf_min_bp"].dropna()
-        shar_d = shared_bg["dist_ctcf_min_bp"].dropna()
-        if len(spec_d) > 0 and len(shar_d) > 0:
-            mw_stat, mw_p = mannwhitneyu(spec_d, shar_d, alternative="two-sided")
-            stats_df["mw_distance_pvalue"] = float(mw_p)
-            stats_df["median_dist_specific_bp"] = float(np.median(spec_d))
-            stats_df["median_dist_shared_bp"] = float(np.median(shar_d))
-
-    # Build prioritized candidate table: genes with concordant enhancer + RNA shift + CTCF support
+    # Build prioritized candidate table: only genes whose expression bias and distal-enhancer
+    # accessibility bias point the same way (concordant classes), ranked with CTCF support
     ctcf_gene_agg = (
         distal_links.groupby("gene_id", as_index=False)
         .agg(
@@ -216,7 +247,11 @@ def annotate_and_test_ctcf(
         * (1.0 + 0.5 * candidates["ctcf_enhancer_frac"])
     )
     candidates = (
-        candidates[candidates["expressed"] & (candidates["n_distal_enhancers"] > 0)]
+        candidates[
+            candidates["expressed"]
+            & (candidates["n_distal_enhancers"] > 0)
+            & candidates["regulatory_class"].isin([f"concordant_{cond_a}", f"concordant_{cond_b}"])
+        ]
         .sort_values("priority_score", ascending=False)
         .reset_index(drop=True)
     )

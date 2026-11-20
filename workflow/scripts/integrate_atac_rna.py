@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Integrate condition-specific ATAC-seq accessibility with RNA-seq expression across gene TSSs."""
+"""Integrate condition-biased ATAC-seq accessibility with RNA-seq expression across gene TSSs.
+
+Accessibility and expression changes are fold-change screens between one ENCODE experiment per
+condition. They flag condition-biased loci; they are not replicate-based differential tests."""
 
 from __future__ import annotations
 
@@ -42,7 +45,18 @@ def load_narrowpeak(path: Path, chromosomes: set[str] | None = None) -> pd.DataF
     df["start"] = df["start"].astype(int)
     df["end"] = df["end"].astype(int)
     df["signalValue"] = pd.to_numeric(df["signalValue"], errors="coerce").fillna(0.0)
+    df["peak"] = pd.to_numeric(df["peak"], errors="coerce").fillna(-1).astype(int)
     return df.sort_values(["chrom", "start", "end"]).reset_index(drop=True)
+
+
+def peak_summits(peaks: pd.DataFrame) -> np.ndarray:
+    """Absolute summit position: start + narrowPeak offset (column 10), or the midpoint if absent (-1)."""
+    starts = peaks["start"].to_numpy(dtype=int)
+    ends = peaks["end"].to_numpy(dtype=int)
+    if "peak" not in peaks.columns:
+        return (starts + ends) // 2
+    offsets = pd.to_numeric(peaks["peak"], errors="coerce").fillna(-1).to_numpy(dtype=int)
+    return np.where(offsets >= 0, starts + offsets, (starts + ends) // 2)
 
 
 def build_consensus_peaks(
@@ -52,10 +66,17 @@ def build_consensus_peaks(
     cond_b: str,
     atac_lfc_thresh: float = 1.0,
 ) -> pd.DataFrame:
-    """Merge overlapping peaks across two conditions and quantify differential accessibility."""
+    """Merge overlapping peaks across two conditions and flag condition-biased accessibility.
+
+    Each consensus region keeps the summit of its strongest contributing peak. The log2 ratio
+    compares peak-caller signal values from one experiment per condition; it is a descriptive
+    fold-change screen, not a replicate-based test of differential accessibility.
+    """
     a_tagged = peaks_a[["chrom", "start", "end", "signalValue"]].copy()
+    a_tagged["peak_summit"] = peak_summits(peaks_a)
     a_tagged["source"] = "A"
     b_tagged = peaks_b[["chrom", "start", "end", "signalValue"]].copy()
+    b_tagged["peak_summit"] = peak_summits(peaks_b)
     b_tagged["source"] = "B"
 
     combined = pd.concat([a_tagged, b_tagged], ignore_index=True)
@@ -67,58 +88,53 @@ def build_consensus_peaks(
         ends = grp["end"].to_numpy()
         sigs = grp["signalValue"].to_numpy()
         srcs = grp["source"].to_numpy()
+        pk_summits = grp["peak_summit"].to_numpy()
 
-        cur_start = int(starts[0])
-        cur_end = int(ends[0])
-        max_a = float(sigs[0]) if srcs[0] == "A" else 0.0
-        max_b = float(sigs[0]) if srcs[0] == "B" else 0.0
-        in_a = srcs[0] == "A"
-        in_b = srcs[0] == "B"
-
-        for i in range(1, len(starts)):
-            s, e, sig, src = int(starts[i]), int(ends[i]), float(sigs[i]), srcs[i]
-            if s <= cur_end:
-                if e > cur_end:
-                    cur_end = e
-                if src == "A":
-                    in_a = True
-                    if sig > max_a:
-                        max_a = sig
-                else:
-                    in_b = True
-                    if sig > max_b:
-                        max_b = sig
-            else:
-                merged_rows.append(
-                    {
-                        "chrom": chrom,
-                        "start": cur_start,
-                        "end": cur_end,
-                        "summit": (cur_start + cur_end) // 2,
-                        f"atac_signal_{cond_a}": max_a,
-                        f"atac_signal_{cond_b}": max_b,
-                        f"present_{cond_a}": in_a,
-                        f"present_{cond_b}": in_b,
-                    }
-                )
-                cur_start, cur_end = s, e
-                max_a = sig if src == "A" else 0.0
-                max_b = sig if src == "B" else 0.0
-                in_a = src == "A"
-                in_b = src == "B"
-
-        merged_rows.append(
-            {
-                "chrom": chrom,
-                "start": cur_start,
-                "end": cur_end,
-                "summit": (cur_start + cur_end) // 2,
-                f"atac_signal_{cond_a}": max_a,
-                f"atac_signal_{cond_b}": max_b,
-                f"present_{cond_a}": in_a,
-                f"present_{cond_b}": in_b,
+        def new_cluster(i: int) -> dict[str, object]:
+            return {
+                "start": int(starts[i]),
+                "end": int(ends[i]),
+                "max_a": float(sigs[i]) if srcs[i] == "A" else 0.0,
+                "max_b": float(sigs[i]) if srcs[i] == "B" else 0.0,
+                "in_a": srcs[i] == "A",
+                "in_b": srcs[i] == "B",
+                "best_sig": float(sigs[i]),
+                "summit": int(pk_summits[i]),
             }
-        )
+
+        def close_cluster(c: dict[str, object]) -> None:
+            merged_rows.append(
+                {
+                    "chrom": chrom,
+                    "start": c["start"],
+                    "end": c["end"],
+                    "summit": c["summit"],
+                    f"atac_signal_{cond_a}": c["max_a"],
+                    f"atac_signal_{cond_b}": c["max_b"],
+                    f"present_{cond_a}": c["in_a"],
+                    f"present_{cond_b}": c["in_b"],
+                }
+            )
+
+        cur = new_cluster(0)
+        for i in range(1, len(starts)):
+            # BED intervals are half-open: a peak starting exactly at cur_end is adjacent, not overlapping
+            if int(starts[i]) < cur["end"]:
+                cur["end"] = max(cur["end"], int(ends[i]))
+                sig = float(sigs[i])
+                if srcs[i] == "A":
+                    cur["in_a"] = True
+                    cur["max_a"] = max(cur["max_a"], sig)
+                else:
+                    cur["in_b"] = True
+                    cur["max_b"] = max(cur["max_b"], sig)
+                if sig > cur["best_sig"]:
+                    cur["best_sig"] = sig
+                    cur["summit"] = int(pk_summits[i])
+            else:
+                close_cluster(cur)
+                cur = new_cluster(i)
+        close_cluster(cur)
 
     consensus = pd.DataFrame(merged_rows)
     consensus.insert(0, "peak_id", [f"PEAK_{i + 1:06d}" for i in range(len(consensus))])

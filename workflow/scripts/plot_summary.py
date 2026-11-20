@@ -97,7 +97,10 @@ def plot_atac_rna_correlation(
 def plot_ctcf_enrichment(stats_df: pd.DataFrame, out_path: Path) -> None:
     """Forest plot of CTCF occupancy odds ratios with 95% confidence intervals."""
     fig, ax = plt.subplots(figsize=(7.5, 4.2))
-    df = stats_df.copy().reset_index(drop=True)
+    df = stats_df.copy()
+    if "test" in df.columns:
+        df = df[df["test"] == "fisher"]
+    df = df.reset_index(drop=True)
     y_pos = np.arange(len(df))
 
     ors = np.clip(df["odds_ratio"].to_numpy(dtype=float), 0.05, 50.0)
@@ -123,8 +126,15 @@ def plot_ctcf_enrichment(stats_df: pd.DataFrame, out_path: Path) -> None:
             fontsize=8.5,
         )
 
+    if len(df):
+        lo, hi = float(np.min(ci_l)), float(np.max(ci_h))
+        ax.set_xlim(min(lo, 1.0) / 1.4, max(hi, 1.0) * 4.0)
+        ticks = [t for t in (0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50) if ax.get_xlim()[0] <= t <= ax.get_xlim()[1]]
+        ax.set_xticks(ticks)
+        ax.set_xticklabels([f"{t:g}" for t in ticks])
+        ax.minorticks_off()
     ax.set_xlabel("CTCF Occupancy Odds Ratio (log scale, 95% CI)")
-    ax.set_title("CTCF Binding Enrichment at Differential Enhancers & DEG Loci")
+    ax.set_title("CTCF Occupancy at Condition-Biased Enhancers (peak-level)")
     ax.invert_yaxis()
     fig.tight_layout()
     fig.savefig(out_path, dpi=300)

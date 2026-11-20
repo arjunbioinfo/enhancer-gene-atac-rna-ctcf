@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/arjunbioinfo/enhancer-gene-atac-rna-ctcf/actions/workflows/ci.yml/badge.svg)](https://github.com/arjunbioinfo/enhancer-gene-atac-rna-ctcf/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Software DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24392024.svg)](https://doi.org/10.5281/zenodo.24392024)
 
 A reproducible, config-driven **Snakemake + Python** workflow that integrates **ATAC-seq** chromatin accessibility, **RNA-seq** gene expression and **CTCF ChIP-seq** occupancy to link distal enhancers to candidate target genes, test whether condition-biased enhancers are CTCF-bound, and rank candidate regulatory loci.
 
